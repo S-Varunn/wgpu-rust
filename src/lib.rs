@@ -1,8 +1,22 @@
+use wgpu::util::DeviceExt;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+// }
+// struct Slider<'a>  {
+//     position: &'a[Vertex],
+//     range_ub: f32,
+//     range_lb: f32,
+//     clicked: bool
+// }
 
 struct State {
     surface: wgpu::Surface,
@@ -10,14 +24,68 @@ struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
-    color: wgpu::Color
+    color: wgpu::Color,
+    render_pipeline: wgpu::RenderPipeline,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer, 
+    num_indices: u32,
+    // slider: Slider
 }
+
+
+const VERTICES: &[Vertex] = &[
+    Vertex { position: [-0.0868241, 0.55240386, 0.0], color: [0.5, 0.0, 0.5] }, // A
+    Vertex { position: [-0.0868241, 0.3958647, 0.0], color: [0.5, 0.0, 0.5] }, // B
+    Vertex { position: [-0.21918549, -0.44939706, 0.0], color: [0.5, 0.0, 0.5] }, // C
+    Vertex { position: [0.0147372, 0.3958647, 0.0], color: [0.5, 0.0, 0.5] }, // D
+    Vertex { position: [0.0147372, 0.55240386, 0.0], color: [0.5, 0.0, 0.5] }, // E
+    Vertex { position: [-0.5868241, 0.49240386, 0.0], color: [0.5, 0.0, 0.5] }, 
+    Vertex { position: [-0.5868241, 0.4598647, 0.0], color: [0.5, 0.0, 0.5] }, 
+    Vertex { position: [-0.21918549, -0.44939706, 0.0], color: [0.5, 0.0, 0.5] }, 
+    Vertex { position: [0.6147372, 0.4598647, 0.0], color: [0.5, 0.0, 0.5] }, 
+    Vertex { position: [0.6147372, 0.49240386, 0.0], color: [0.5, 0.0, 0.5] }, 
+];
+
+const INDICES: &[u16] = &[
+    0, 1, 4,
+    1, 3, 4,
+    5, 6, 9,
+    6, 8, 9
+];
+
+// const LINEINDICES: &[u16] = &[
+    
+// ];
+ 
+ 
+impl Vertex {
+    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x3,
+                }
+            ]
+        }
+    }
+}
+
+
 
 impl State {
     // Creating some of the wgpu types requires async code
     async fn new(window: &Window) -> Self {
         let size = window.inner_size();
-
+        let num_vertices = VERTICES.len() as u32;
         // The instance is a handle to our GPU
         // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -25,8 +93,6 @@ impl State {
             dx12_shader_compiler: Default::default(),
         });
 
-        // # Safety
-        //
         // The surface needs to live as long as the window that created it.
         // State owns the window so this should be safe.
         let surface = unsafe { instance.create_surface(&window) }.unwrap();
@@ -57,10 +123,24 @@ impl State {
             .await
             .unwrap();
 
+        let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let index_buffer = device.create_buffer_init(
+    &wgpu::util::BufferInitDescriptor {
+        label: Some("Index Buffer"),
+        contents: bytemuck::cast_slice(INDICES),
+        usage: wgpu::BufferUsages::INDEX,
+    }
+);
+let num_indices = INDICES.len() as u32;
+
+
         let surface_caps = surface.get_capabilities(&adapter);
-        // Shader code in this tutorial assumes an sRGB surface texture. Using a different
-        // one will result all the colors coming out darker. If you want to support non
-        // sRGB surfaces, you'll need to account for that when drawing to the frame.
+        
         let surface_format = surface_caps
             .formats
             .iter()
@@ -77,20 +157,78 @@ impl State {
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
         };
+        let render_pipeline_layout =
+        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Render Pipeline Layout"),
+            bind_group_layouts: &[],
+            push_constant_ranges: &[],
+    });
+    let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Render Pipeline"),
+        layout: Some(&render_pipeline_layout),
+        vertex: wgpu::VertexState {
+        module: &shader,
+        entry_point: "vs_main", 
+         buffers: &[
+            Vertex::desc(),
+        ],
+    },
+    fragment: Some(wgpu::FragmentState { // 3.
+        module: &shader,
+        entry_point: "fs_main",
+        targets: &[Some(wgpu::ColorTargetState { // 4.
+            format: config.format,
+            blend: Some(wgpu::BlendState::REPLACE),
+            write_mask: wgpu::ColorWrites::ALL,
+        })],
+    }),
+        primitive: wgpu::PrimitiveState {
+        topology: wgpu::PrimitiveTopology::TriangleList, // 1.
+        strip_index_format: None,
+        front_face: wgpu::FrontFace::Ccw, // 2.
+        cull_mode: Some(wgpu::Face::Back),
+        // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+        polygon_mode: wgpu::PolygonMode::Fill,
+        // Requires Features::DEPTH_CLIP_CONTROL
+        unclipped_depth: false,
+        // Requires Features::CONSERVATIVE_RASTERIZATION
+        conservative: false,
+    },
+        depth_stencil: None, // 1.
+    multisample: wgpu::MultisampleState {
+        count: 1, // 2.
+        mask: !0, // 3.
+        alpha_to_coverage_enabled: false, // 4.
+    },
+    multiview: None, // 5.
+});
         surface.configure(&device, &config);
-        let color = wgpu::Color::WHITE;
+        let color = wgpu::Color::BLACK;
+
+        // let slider = Slider {
+        //     position: &VERTICES[0..4],
+        //     range_lb: 0.0,
+        //     range_ub: 100.0,
+        //     clicked: false
+        // };
+
         Self {
             surface,
             device,
             queue,
             config,
             size,
-            color
+            color,
+            render_pipeline,
+            vertex_buffer,
+            index_buffer,
+            num_indices,
+            // slider  
         }
     }
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        println!("{}  {}", new_size.width, new_size.height);
+        // println!("{}  {}", new_size.width, new_size.height);
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
             self.config.width = new_size.width;
@@ -101,12 +239,29 @@ impl State {
 
     fn input(&mut self, event: &WindowEvent) -> bool {
         match event {
-            WindowEvent::CursorEntered { device_id } => {
-                self.color = wgpu::Color::BLACK;
+            // WindowEvent::CursorEntered { device_id } => {
+            //     self.color = wgpu::Color::BLACK;
+            //     true
+            // }
+            // WindowEvent::CursorLeft { device_id } => {
+            //     self.color = wgpu::Color::WHITE;
+            //     true
+            // }
+            WindowEvent::CursorMoved {  position,.. } => {
+                // let r = position.x / self.size.width as f64;
+                // let g = position.y / self.size.height as f64;
+                // self.color = wgpu::Color {
+                //     r: r,
+                //     g:g,
+                //     b:0.3,
+                //     a:1.0
+                // };
+                println!("{:?} {:?}",position.x, position.y);
                 true
             }
-            WindowEvent::CursorLeft { device_id } => {
-                self.color = wgpu::Color::WHITE;
+            WindowEvent::MouseInput {  state, button ,.. } => {
+                println!("{:?} {:?}",button,state);
+                // if()
                 true
             }
             _ => false
@@ -128,7 +283,7 @@ impl State {
                 label: Some("Render Encoder"),
             });
         {
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
@@ -140,6 +295,10 @@ impl State {
                 })],
                 depth_stencil_attachment: None,
             });
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..1); 
         }
 
         // submit will accept anything that implements IntoIter
@@ -206,6 +365,11 @@ pub async fn run() {
             // request it.
             window.request_redraw();
         }
+        // Event::DeviceEvent {  ref event ,..} =>{
+        //     match event {
+        //         DeviceEvent
+        //     }
+        // }
         //If window event does not match we dont do anything (match condition)
         _ => {}
     });
