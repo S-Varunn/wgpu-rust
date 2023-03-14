@@ -10,14 +10,8 @@ struct Vertex {
     position: [f32; 3],
     color: [f32; 3],
 }
-// }
-// struct Slider<'a>  {
-//     position: &'a[Vertex],
-//     range_ub: f32,
-//     range_lb: f32,
-//     clicked: bool
-// }
 
+// The application state to maintain the overall global states (Reusable components).
 struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -29,35 +23,99 @@ struct State {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer, 
     num_indices: u32,
-    // slider: Slider
 }
 
+// The slider states which contain the current position and other reqired details
+#[derive(Debug)]
+struct Slider <'a>{
+    current_position: [f32;2],
+    vertices: [Vertex;8],
+    indices: &'a [u16],
+    clicked: bool,
+    dragging: bool,
+    range_ub: f64,
+    rangle_lb: f64,
+}
+// Calculates the vertices to the slider head based on a single vertex position (Left top corner).
+fn get_new_coordinates(slider_position: [f32;2]) ->[Vertex;8] {
+        let curr_position_x = slider_position[0];
+        let curr_position_y = slider_position[1];
+        let mut result = [Vertex {
+            position: [0.0,0.0,0.0],
+            color: [0.5,0.0,0.5]
+        };8];
+        // println!("{} {}",curr_position_x,curr_position_y);
+        // Head Positioning
+        result[0].position[0] = curr_position_x;
+        result[0].position[1] = curr_position_y;
+        result[1].position[0] = curr_position_x;
+        result[1].position[1] = curr_position_y-0.15;
+        result[2].position[0] = curr_position_x+0.10;
+        result[2].position[1] = curr_position_y-0.15;
+        result[3].position[0] = curr_position_x+0.10;
+        result[3].position[1] = curr_position_y;
+        // Bar positioning
+        result[4].position = [-0.60, 0.50, 0.0];
+        result[5].position = [-0.60, 0.45, 0.0];
+        result[6].position = [0.60, 0.45, 0.0];
+        result[7].position = [0.60, 0.50, 0.0];
 
-const VERTICES: &[Vertex] = &[
-    Vertex { position: [-0.0868241, 0.55240386, 0.0], color: [0.5, 0.0, 0.5] }, // A
-    Vertex { position: [-0.0868241, 0.3958647, 0.0], color: [0.5, 0.0, 0.5] }, // B
-    Vertex { position: [-0.21918549, -0.44939706, 0.0], color: [0.5, 0.0, 0.5] }, // C
-    Vertex { position: [0.0147372, 0.3958647, 0.0], color: [0.5, 0.0, 0.5] }, // D
-    Vertex { position: [0.0147372, 0.55240386, 0.0], color: [0.5, 0.0, 0.5] }, // E
-    Vertex { position: [-0.5868241, 0.49240386, 0.0], color: [0.5, 0.0, 0.5] }, 
-    Vertex { position: [-0.5868241, 0.4598647, 0.0], color: [0.5, 0.0, 0.5] }, 
-    Vertex { position: [-0.21918549, -0.44939706, 0.0], color: [0.5, 0.0, 0.5] }, 
-    Vertex { position: [0.6147372, 0.4598647, 0.0], color: [0.5, 0.0, 0.5] }, 
-    Vertex { position: [0.6147372, 0.49240386, 0.0], color: [0.5, 0.0, 0.5] }, 
-];
+        return result;
+    }
 
-const INDICES: &[u16] = &[
-    0, 1, 4,
-    1, 3, 4,
-    5, 6, 9,
-    6, 8, 9
-];
 
-// const LINEINDICES: &[u16] = &[
-    
-// ];
+// Slider impl with required functions to access and modify state 
+impl Slider<'_> {
+    // Creates a new slider with default values to position the slider at a position
+    // Configurable later based on layouts
+    fn new() -> Self {
+        // The top left position of the slider head
+        let current_position = [-0.60, 0.55];
+        // The vertex coordinates of the slider head and bar
+        let vertices = get_new_coordinates(current_position);
+        // println!("{:?}",vertices);
+        // Vertex mapping
+        let indices: &[u16] = &[
+            0, 1, 3,
+            1, 2, 3,
+            4, 5, 7,
+            5, 6, 7
+        ];
+        // Return an instance of the slider
+        Self {
+            current_position,
+            clicked: false,
+            range_ub: 0.60,
+            rangle_lb: -0.65,
+            vertices: vertices,
+            indices: indices,
+            dragging: false,
+        }
+    }
+    // Update the position of the slider vertices based on the current fed position
+    fn update_position(&mut self, current_position: [f32;2]){
+        let vertices = get_new_coordinates(current_position);
+        self.vertices = vertices;
+    }
+    // Set true if the slider is clicked
+    fn button_clicked(&mut self) {
+        self.clicked = true;
+    }
+    // Set true if the slider is released
+    fn button_released(&mut self) {
+        self.clicked = false;
+    }
+    // To mark if the slider is being dragged
+    fn dragging(&mut self){
+        self.dragging = true;
+    }
+    // To mark that the slider has stopped dragging
+    fn dragging_stop(&mut self){
+        self.dragging = false;
+    }
+}
  
- 
+// Vertex impl
 impl Vertex {
     fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         wgpu::VertexBufferLayout {
@@ -78,14 +136,21 @@ impl Vertex {
         }
     }
 }
+// [Vertex { position: [-0.6, 0.55, 0.0], color: [0.5, 0.0, 0.5] },
+//  Vertex { position: [-0.6, 0.4, 0.0], color: [0.5, 0.0, 0.5] },
+//  Vertex { position: [-0.5, 0.4, 0.0], color: [0.5, 0.0, 0.5] },
+//  Vertex { position: [-0.5, 0.55, 0.0], color: [0.5, 0.0, 0.5] }, 
+//  Vertex { position: [-0.6, 0.5, 0.0], color: [0.5, 0.0, 0.5] }, 
+//  Vertex { position: [-0.6, 0.45, 0.0], color: [0.5, 0.0, 0.5] }, 
+//  Vertex { position: [0.6, 0.45, 0.0], color: [0.5, 0.0, 0.5] }, 
+//  Vertex { position: [0.6, 0.5, 0.0], color: [0.5, 0.0, 0.5] }]
 
 
-
+// App state impl
 impl State {
     // Creating some of the wgpu types requires async code
-    async fn new(window: &Window) -> Self {
+    async fn new(window: &Window, slider: &mut Slider<'_>) -> Self {
         let size = window.inner_size();
-        let num_vertices = VERTICES.len() as u32;
         // The instance is a handle to our GPU
         // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -96,7 +161,7 @@ impl State {
         // The surface needs to live as long as the window that created it.
         // State owns the window so this should be safe.
         let surface = unsafe { instance.create_surface(&window) }.unwrap();
-
+        // Create an adapter with the required configurations.
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
@@ -105,6 +170,7 @@ impl State {
             })
             .await
             .unwrap();
+        // Create a device and queue 
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -122,22 +188,26 @@ impl State {
             )
             .await
             .unwrap();
-
+        // Import the shader module using the macro include_wsgl!
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+
+        // The initialisation of the buffers 
+        // Creating a vertex buffer based on the vertices of the component
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
+            contents: bytemuck::cast_slice(&slider.vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
+        // Creating an index buffer based on the indices 
         let index_buffer = device.create_buffer_init(
-    &wgpu::util::BufferInitDescriptor {
-        label: Some("Index Buffer"),
-        contents: bytemuck::cast_slice(INDICES),
-        usage: wgpu::BufferUsages::INDEX,
-    }
-);
-let num_indices = INDICES.len() as u32;
+        &wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(slider.indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
 
+        // The size of the indices to be fed inside the renderer 
+        let num_indices = slider.indices.len() as u32;
 
         let surface_caps = surface.get_capabilities(&adapter);
         
@@ -148,6 +218,7 @@ let num_indices = INDICES.len() as u32;
             .filter(|f| f.describe().srgb)
             .next()
             .unwrap_or(surface_caps.formats[0]);
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -157,60 +228,53 @@ let num_indices = INDICES.len() as u32;
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
         };
+        
         let render_pipeline_layout =
-        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[],
-            push_constant_ranges: &[],
-    });
-    let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Render Pipeline"),
-        layout: Some(&render_pipeline_layout),
-        vertex: wgpu::VertexState {
-        module: &shader,
-        entry_point: "vs_main", 
-         buffers: &[
-            Vertex::desc(),
-        ],
-    },
-    fragment: Some(wgpu::FragmentState { // 3.
-        module: &shader,
-        entry_point: "fs_main",
-        targets: &[Some(wgpu::ColorTargetState { // 4.
-            format: config.format,
-            blend: Some(wgpu::BlendState::REPLACE),
-            write_mask: wgpu::ColorWrites::ALL,
-        })],
-    }),
-        primitive: wgpu::PrimitiveState {
-        topology: wgpu::PrimitiveTopology::TriangleList, // 1.
-        strip_index_format: None,
-        front_face: wgpu::FrontFace::Ccw, // 2.
-        cull_mode: Some(wgpu::Face::Back),
-        // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
-        polygon_mode: wgpu::PolygonMode::Fill,
-        // Requires Features::DEPTH_CLIP_CONTROL
-        unclipped_depth: false,
-        // Requires Features::CONSERVATIVE_RASTERIZATION
-        conservative: false,
-    },
-        depth_stencil: None, // 1.
-    multisample: wgpu::MultisampleState {
-        count: 1, // 2.
-        mask: !0, // 3.
-        alpha_to_coverage_enabled: false, // 4.
-    },
-    multiview: None, // 5.
-});
-        surface.configure(&device, &config);
-        let color = wgpu::Color::BLACK;
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[],
+                push_constant_ranges: &[],
+            });
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("Render Pipeline"),
+                layout: Some(&render_pipeline_layout),
+                vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: "vs_main", 
+                buffers: &[
+                    Vertex::desc(),
+                ],
+            },
+                fragment: Some(wgpu::FragmentState { 
+                module: &shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState { 
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+                primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList, 
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw, 
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+                depth_stencil: None, 
+            multisample: wgpu::MultisampleState {
+                count: 1, 
+                mask: !0, 
+                alpha_to_coverage_enabled: false, 
+                },
+            multiview: None, 
+            });
 
-        // let slider = Slider {
-        //     position: &VERTICES[0..4],
-        //     range_lb: 0.0,
-        //     range_ub: 100.0,
-        //     clicked: false
-        // };
+        surface.configure(&device, &config);
+        
+        let color = wgpu::Color::BLACK;
 
         Self {
             surface,
@@ -223,12 +287,10 @@ let num_indices = INDICES.len() as u32;
             vertex_buffer,
             index_buffer,
             num_indices,
-            // slider  
         }
     }
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        // println!("{}  {}", new_size.width, new_size.height);
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
             self.config.width = new_size.width;
@@ -237,7 +299,7 @@ let num_indices = INDICES.len() as u32;
         }
     }
 
-    fn input(&mut self, event: &WindowEvent) -> bool {
+    fn input(&mut self, event: &WindowEvent, window: &Window, slider: &mut Slider ) -> bool {
         match event {
             // WindowEvent::CursorEntered { device_id } => {
             //     self.color = wgpu::Color::BLACK;
@@ -248,28 +310,61 @@ let num_indices = INDICES.len() as u32;
             //     true
             // }
             WindowEvent::CursorMoved {  position,.. } => {
-                // let r = position.x / self.size.width as f64;
-                // let g = position.y / self.size.height as f64;
-                // self.color = wgpu::Color {
-                //     r: r,
-                //     g:g,
-                //     b:0.3,
-                //     a:1.0
-                // };
-                println!("{:?} {:?}",position.x, position.y);
+                let size = window.inner_size();
+                let x_pos = ((position.x - 400.0) / size.width as f64) * 2.0 ;
+                let y_pos = ((position.y - 300.0) / size.height as f64) * 2.0;
+                if slider.clicked == true {
+                    let current_x = slider.current_position[0] as f64;
+                    let current_y = slider.current_position[1] as f64;
+                    if slider.dragging == false && current_x < x_pos && current_x +  0.10 > x_pos && current_y > -y_pos && current_y - 0.15 < -y_pos {
+                        slider.dragging();
+                    }
+                    if slider.dragging == true {
+                        slider.update_position([x_pos as f32,current_y as f32]);
+                       
+                        if x_pos >= slider.rangle_lb && x_pos <= slider.range_ub {
+                            window.request_redraw();
+                        }
+                    }
+                }
                 true
             }
             WindowEvent::MouseInput {  state, button ,.. } => {
-                println!("{:?} {:?}",button,state);
-                // if()
+                if button == &MouseButton::Left {
+                    if state == &ElementState::Pressed {
+                        slider.button_clicked();
+                    }
+                    else if  state == &ElementState::Released && slider.clicked == true {
+                        slider.button_released();
+                        if slider.dragging == true {
+                            //Set the current position here
+                            slider.current_position = [slider.vertices[0].position[0],slider.vertices[0].position[1]];
+                        }
+                        slider.dragging_stop();
+                    }
+                }
+                // println!("{:?}",slider);
                 true
             }
             _ => false
         }
     }
 
-    fn update(&mut self) {
-    
+    fn update(&mut self, slider: &mut Slider) {
+        let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(&slider.vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        // Creating an index buffer based on the indices 
+        let index_buffer = self.device.create_buffer_init(
+        &wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(slider.indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        self.index_buffer = index_buffer;
+        self.vertex_buffer = vertex_buffer;
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -313,7 +408,9 @@ pub async fn run() {
     let event_loop = EventLoop::new();
 
     let window = WindowBuilder::new().build(&event_loop).unwrap();
-    let mut state = State::new(&window).await;
+    let mut slider = Slider::new();
+
+    let mut state = State::new(&window,&mut slider).await;
 
     event_loop.run(move |event, _, control_flow| match event {
         //We are listening for window events and if it matches we handle it
@@ -321,7 +418,7 @@ pub async fn run() {
             ref event,
             window_id,
         } if window_id == window.id() => {
-            if !state.input(event) {
+            if !state.input(event, &window, &mut slider) {
                 match event {
             // Here we have a guard condition and check if the window is the same as our window and proceed with another match condition
             //Listening for a window event and proceeding with a guard condition
@@ -349,7 +446,8 @@ pub async fn run() {
             }
         }
         Event::RedrawRequested(window_id) if window_id == window.id() => {
-            state.update();
+            // When changes in slider is seen update the state of the slider and render 
+            state.update(&mut slider);
             match state.render() {
                 Ok(_) => {}
                 // Reconfigure the surface if lost
@@ -363,13 +461,8 @@ pub async fn run() {
         Event::MainEventsCleared => {
             // RedrawRequested will only trigger once, unless we manually
             // request it.
-            window.request_redraw();
+            // window.request_redraw();
         }
-        // Event::DeviceEvent {  ref event ,..} =>{
-        //     match event {
-        //         DeviceEvent
-        //     }
-        // }
         //If window event does not match we dont do anything (match condition)
         _ => {}
     });
