@@ -73,7 +73,6 @@ impl Slider<'_> {
         let current_position = [-0.60, 0.55];
         // The vertex coordinates of the slider head and bar
         let vertices = get_new_coordinates(current_position);
-        // println!("{:?}",vertices);
         // Vertex mapping
         let indices: &[u16] = &[
             0, 1, 3,
@@ -136,15 +135,6 @@ impl Vertex {
         }
     }
 }
-// [Vertex { position: [-0.6, 0.55, 0.0], color: [0.5, 0.0, 0.5] },
-//  Vertex { position: [-0.6, 0.4, 0.0], color: [0.5, 0.0, 0.5] },
-//  Vertex { position: [-0.5, 0.4, 0.0], color: [0.5, 0.0, 0.5] },
-//  Vertex { position: [-0.5, 0.55, 0.0], color: [0.5, 0.0, 0.5] }, 
-//  Vertex { position: [-0.6, 0.5, 0.0], color: [0.5, 0.0, 0.5] }, 
-//  Vertex { position: [-0.6, 0.45, 0.0], color: [0.5, 0.0, 0.5] }, 
-//  Vertex { position: [0.6, 0.45, 0.0], color: [0.5, 0.0, 0.5] }, 
-//  Vertex { position: [0.6, 0.5, 0.0], color: [0.5, 0.0, 0.5] }]
-
 
 // App state impl
 impl State {
@@ -311,8 +301,9 @@ impl State {
             // }
             WindowEvent::CursorMoved {  position,.. } => {
                 let size = window.inner_size();
-                let x_pos = ((position.x - 400.0) / size.width as f64) * 2.0 ;
-                let y_pos = ((position.y - 300.0) / size.height as f64) * 2.0;
+                // println!("{:?}",size);
+                let x_pos = ((position.x - (size.width / 2) as f64) / size.width as f64) * 2.0 ;
+                let y_pos = ((position.y - (size.height / 2) as f64) / size.height as f64) * 2.0;
                 if slider.clicked == true {
                     let current_x = slider.current_position[0] as f64;
                     let current_y = slider.current_position[1] as f64;
